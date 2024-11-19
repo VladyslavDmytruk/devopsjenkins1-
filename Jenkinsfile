@@ -3,9 +3,14 @@ pipeline {
     environment {
         APP_PORT = '9090'
         JOB_NAME = "${env.JOB_NAME}"
-        TARGET_DIR = "${env.WORKSPACE}/target" // Using WORKSPACE environment variable
+        TARGET_DIR = "${env.WORKSPACE}/target"
     }
     stages {
+        stage('Setup') {
+            steps {
+                sh 'sudo apt-get update && sudo apt-get install -y curl' // Adjust based on your OS
+            }
+        }
         stage('Build') {
             steps {
                 sh 'mvn clean package'
@@ -16,12 +21,11 @@ pipeline {
                 stage('Running Application') {
                     agent any
                     steps {
-                        timeout(time: 120, unit: 'SECONDS') { // Timeout to allow application to start
+                        timeout(time: 120, unit: 'SECONDS') {
                             script {
                                 try {
-                                    // Launch the application from the target directory
                                     sh "java -jar ${env.TARGET_DIR}/contact.war --server.port=${APP_PORT} &"
-                                    echo "Application started successfully from ${env.TARGET_DIR}."
+                                    echo "Application started successfully."
                                 } catch (Exception e) {
                                     echo "Application startup failed or timed out."
                                     error("Aborting parallel stages.")
@@ -32,7 +36,6 @@ pipeline {
                 }
                 stage('Running Test') {
                     steps {
-                        // Wait for the application to start
                         script {
                             def retries = 10
                             def sleepInterval = 10
@@ -46,22 +49,27 @@ pipeline {
 
                                 if (response == '200') {
                                     isUp = true
-                                    echo "Application is reachable on port ${APP_PORT}."
+                                    echo "Application is reachable."
                                     break
                                 }
-                                echo "Waiting for application to be ready... (Retry ${i + 1}/${retries})"
+                                echo "Retrying (${i + 1}/${retries})..."
                                 sleep sleepInterval
                             }
 
                             if (!isUp) {
-                                error("Application is not reachable on port ${APP_PORT}. Failing the build.")
+                                error("Application is not reachable.")
                             }
                         }
-                        // Run tests from the target directory
                         sh "mvn -Dtest=RestIT test"
                     }
                 }
             }
+        }
+    }
+    post {
+        always {
+            sh 'pkill -f "java -jar"' // Clean up the application process
+            echo "Application stopped."
         }
     }
 }
