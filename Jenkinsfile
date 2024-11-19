@@ -2,43 +2,39 @@ pipeline {
     agent any
     environment {
         APP_PORT = '9090'
-        JOB_NAME = "${env.JOB_NAME}"
         TARGET_DIR = "${env.WORKSPACE}/target"
     }
+    options {
+        timeout(time: 5, unit: 'MINUTES') // Ensure the pipeline does not hang indefinitely
+    }
     stages {
-        stage('Setup') {
-            steps {
-                sh 'sudo apt-get update && sudo apt-get install -y curl' // Adjust based on your OS
-            }
-        }
         stage('Build') {
             steps {
+                echo "Building the application..."
                 sh 'mvn clean package'
             }
         }
         stage('Integration Test') {
             parallel {
-                stage('Running Application') {
-                    agent any
+                stage('Start Application') {
                     steps {
-                        timeout(time: 120, unit: 'SECONDS') {
-                            script {
-                                try {
-                                    sh "java -jar ${env.TARGET_DIR}/contact.war --server.port=${APP_PORT} &"
-                                    echo "Application started successfully."
-                                } catch (Exception e) {
-                                    echo "Application startup failed or timed out."
-                                    error("Aborting parallel stages.")
-                                }
+                        script {
+                            try {
+                                echo "Starting the application..."
+                                sh "nohup java -jar ${TARGET_DIR}/contact.war --server.port=${APP_PORT} > app.log 2>&1 &"
+                                echo "Application started successfully."
+                            } catch (Exception e) {
+                                echo "Failed to start the application."
+                                error("Aborting integration test stages.")
                             }
                         }
                     }
                 }
-                stage('Running Test') {
+                stage('Run Tests') {
                     steps {
                         script {
+                            echo "Waiting for the application to be ready..."
                             def retries = 10
-                            def sleepInterval = 10
                             def isUp = false
 
                             for (int i = 0; i < retries; i++) {
@@ -49,18 +45,20 @@ pipeline {
 
                                 if (response == '200') {
                                     isUp = true
-                                    echo "Application is reachable."
+                                    echo "Application is reachable on port ${APP_PORT}."
                                     break
                                 }
-                                echo "Retrying (${i + 1}/${retries})..."
-                                sleep sleepInterval
+                                echo "Retry ${i + 1}/${retries}... Application not ready yet."
+                                sleep 10
                             }
 
                             if (!isUp) {
-                                error("Application is not reachable.")
+                                error("Application is not reachable on port ${APP_PORT}.")
                             }
+
+                            echo "Running integration tests..."
+                            sh 'mvn -Dtest=RestIT test'
                         }
-                        sh "mvn -Dtest=RestIT test"
                     }
                 }
             }
@@ -68,8 +66,20 @@ pipeline {
     }
     post {
         always {
-            sh 'pkill -f "java -jar"' // Clean up the application process
-            echo "Application stopped."
+            echo "Cleaning up resources..."
+            script {
+                try {
+                    sh "pkill -f 'java -jar' || echo 'No running application processes to kill.'"
+                } catch (Exception e) {
+                    echo "Error during cleanup: ${e.message}"
+                }
+            }
+        }
+        success {
+            echo "Pipeline completed successfully."
+        }
+        failure {
+            echo "Pipeline failed. Please check logs for more details."
         }
     }
 }
