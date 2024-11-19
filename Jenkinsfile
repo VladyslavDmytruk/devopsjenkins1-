@@ -3,6 +3,8 @@ pipeline {
     environment {
         APP_PORT = '9090'
         TARGET_DIR = "${env.WORKSPACE}/target"
+        JOB_NAME = "${env.JOB_NAME}"
+
     }
     options {
         timeout(time: 5, unit: 'MINUTES') // Ensure the pipeline does not hang indefinitely
