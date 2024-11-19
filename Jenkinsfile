@@ -8,6 +8,18 @@ pipeline {
         timeout(time: 5, unit: 'MINUTES') // Ensure the pipeline does not hang indefinitely
     }
     stages {
+        stage('Install Dependencies') {
+            steps {
+                echo "Checking and installing dependencies..."
+                sh '''
+                if ! command -v curl &> /dev/null
+                then
+                    echo "curl could not be found, installing it..."
+                    sudo apt-get update && sudo apt-get install -y curl
+                fi
+                '''
+            }
+        }
         stage('Build') {
             steps {
                 echo "Building the application..."
