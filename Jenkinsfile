@@ -4,7 +4,6 @@ pipeline {
         APP_PORT = '9090'
         TARGET_DIR = "${env.WORKSPACE}/target"
         JOB_NAME = "${env.JOB_NAME}"
-
     }
     options {
         timeout(time: 5, unit: 'MINUTES') // Ensure the pipeline does not hang indefinitely
@@ -35,6 +34,12 @@ pipeline {
                 stage('Run Tests') {
                     steps {
                         script {
+                            echo "Installing curl..."
+                            // Install curl before using it (for Debian/Ubuntu-based systems)
+                            sh 'apt-get update && apt-get install -y curl' // For Debian/Ubuntu-based systems
+                            // For RedHat/CentOS-based systems, use the following:
+                            // sh 'yum install -y curl'
+
                             echo "Waiting for the application to be ready..."
                             def retries = 10
                             def isUp = false
@@ -83,6 +88,9 @@ pipeline {
         failure {
             echo "Pipeline failed. Please check logs for more details."
         }
+    }
+}
+
     }
 }
 
